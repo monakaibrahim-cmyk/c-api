@@ -1,66 +1,68 @@
-global sys_timestamp
+global sys_timestamp							; declare global symbol so linker can see sys_timestamp
 
-section .rodata
-default_fmt     db      "%Y-%m-%d %H:%M:%S.%L", 0
+section .rodata									; read-only data section
+default_fmt     db      "%Y-%m-%d %H:%M:%S.%L", 0	; default timestamp format string
 
-month_days      db      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+month_days      db      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31	; days per month
 
-section .text
+section .text									; code section
 
 sys_timestamp:
-	push    rbp
-	mov     rbp, rsp
-	push    rbx
+	push    rbp									; save base pointer
+	mov     rbp, rsp							; set stack frame
+	push    rbx									; save callee-saved registers
 	push    r12
 	push    r13
 	push    r14
 	push    r15
 
-	sub     rsp, 16
+	sub     rsp, 16								; allocate stack space
 
-	test    rsi, rsi
+	test    rsi, rsi							; check if format string is NULL
 	jnz     .format_ok
-	lea     rsi, [rel default_fmt]
+	lea     rsi, [rel default_fmt]				; if NULL, use default format
 
 .format_ok:
-	mov     r12, rdi
-	mov     r13, rsi
+	mov     r12, rdi							; output buffer pointer
+	mov     r13, rsi							; format string pointer
 
-	mov     rax, 96
-	mov     rdi, rsp
+	mov     rax, 96								; syscall number (likely gettimeofday or similar)
+	mov     rdi, rsp							; pointer to struct timeval buffer
 	xor     rsi, rsi
-	syscall
+	syscall 									; call kernel
 
-	mov     rax, [rsp]
-	mov     rcx, [rsp + 8]
+	mov     rax, [rsp]							; seconds part
+	mov     rcx, [rsp + 8]						; microseconds part
 
-	push    rax
+	push    rax									; save seconds
 	mov     rax, rcx
 	mov     rcx, 1000
 	xor     rdx, rdx
-	div     rcx
-	mov     r11, rax
-	pop     rax
+	div     rcx									; convert microseconds to milliseconds
+	mov     r11, rax							; store milliseconds
+	pop     rax									; restore seconds
 
 	mov     rcx, 86400
 	xor     rdx, rdx
-	div     rcx
-	mov     r15, rdx
-	mov     r14, rax
+	div     rcx									; split into days and seconds
+	mov     r15, rdx							; seconds within day
+	mov     r14, rax							; total days since epoch
 
-	mov     r8, 1970
+	mov     r8, 1970							; starting year
 .year_loop:
-	mov     r9, 365
+	mov     r9, 365								; assume non-leap year
 
 	mov     rax, r8
 	and     rax, 3
-	jnz     .not_leap
+	jnz     .not_leap							; check leap year condition (fast mod 4)
+
 	mov     rax, r8
 	xor     rdx, rdx
 	mov     rcx, 100
 	div     rcx
 	test    rdx, rdx
 	jnz     .is_leap
+
 	mov     rax, r8
 	xor     rdx, rdx
 	mov     rcx, 400
@@ -69,63 +71,66 @@ sys_timestamp:
 	jnz     .not_leap
 
 .is_leap:
-	mov     r9, 366
+	mov     r9, 366								; leap year has 366 days
+
 .not_leap:
 	cmp     r14, r9
-	jl      .year_found
-	sub     r14, r9
-	inc     r8
+	jl      .year_found							; stop when correct year found
+
+	sub     r14, r9								; subtract days in year
+	inc     r8									; increment year
 	jmp     .year_loop
 
 .year_found:
-	mov     r10, 1
+	mov     r10, 1								; month index starts at 1
 	lea     rbx, [rel month_days]
 
 .month_loop:
-	movzx   rcx, byte [rbx + r10 - 1]
+	movzx   rcx, byte [rbx + r10 - 1]			; get days in current month
 	cmp     r10, 2
 	jne     .check_month
 	cmp     r9, 366
 	jne     .check_month
-	inc     rcx
+	inc     rcx									; adjust February for leap year
+
 .check_month:
 	cmp     r14, rcx
-	jl      .month_found
+	jl      .month_found						; found correct month
 	sub     r14, rcx
 	inc     r10
 	jmp     .month_loop
 
 .month_found:
-	inc     r14
+	inc     r14									; day of month (1-based)
 
 	mov     rax, r15
 	mov     rcx, 3600
 	xor     rdx, rdx
-	div     rcx
+	div     rcx									; convert seconds to hours
 	mov     r15, rax
 
 	mov     rax, rdx
 	mov     rcx, 60
 	xor     rdx, rdx
-	div     rcx
+	div     rcx									; convert remainder to minutes
 
-	push    r8
-	push    r10
-	push    r14
-	push    r15
-	push    rax
-	push    rdx
-	push    r11
+	push    r8									; push year
+	push    r10									; push month
+	push    r14									; push day
+	push    r15									; push hour
+	push    rax									; push minutes
+	push    rdx									; push seconds
+	push    r11									; push milliseconds
 
 .parse_loop:
-	mov     al, byte [r13]
+	mov     al, byte [r13]						; read format char
 	test    al, al
-	jz      .done
+	jz      .done								; end of format string
 
 	cmp     al, '%'
-	je      .handle_token
+	je      .handle_token						; handle format specifier
 
-	mov     byte [r12], al
+	mov     byte [r12], al						; copy literal character
 	inc     r12
 	inc     r13
 	jmp     .parse_loop
@@ -158,47 +163,53 @@ sys_timestamp:
 
 .fmt_year:
 	mov     rax, [rsp + 48]
-	call    write_4digits
+	call    write_4digits						; write year
 	inc     r13
 	jmp     .parse_loop
+
 .fmt_month:
 	mov     rax, [rsp + 40]
-	call    write_2digits
+	call    write_2digits						; write month
 	inc     r13
 	jmp     .parse_loop
+
 .fmt_day:
 	mov     rax, [rsp + 32]
-	call    write_2digits
+	call    write_2digits						; write day
 	inc     r13
 	jmp     .parse_loop
+
 .fmt_hour:
 	mov     rax, [rsp + 24]
-	call    write_2digits
+	call    write_2digits						; write hour
 	inc     r13
 	jmp     .parse_loop
+
 .fmt_minute:
 	mov     rax, [rsp + 16]
-	call    write_2digits
+	call    write_2digits						; write minute
 	inc     r13
 	jmp     .parse_loop
+
 .fmt_second:
 	mov     rax, [rsp + 8]
-	call    write_2digits
+	call    write_2digits						; write second
 	inc     r13
 	jmp     .parse_loop
+
 .fmt_milli:
 	mov     rax, [rsp]
-	call    write_3digits
+	call    write_3digits						; write milliseconds
 	inc     r13
 	jmp     .parse_loop
 
 .done:
-	mov     byte [r12], 0
+	mov     byte [r12], 0						; null-terminate output string
 
-	add     rsp, 56
-	add     rsp, 16
+	add     rsp, 56								; clean up pushed values
+	add     rsp, 16								; free local stack space
 
-	pop     r15
+	pop     r15									; restore registers
 	pop     r14
 	pop     r13
 	pop     r12
@@ -213,6 +224,7 @@ write_4digits:
 	add     al, '0'
 	mov     byte [r12], al
 	inc     r12
+
 	mov     rax, rdx
 	mov     rcx, 100
 	xor     rdx, rdx
@@ -220,7 +232,9 @@ write_4digits:
 	add     al, '0'
 	mov     byte [r12], al
 	inc     r12
+
 	mov     rax, rdx
+
 write_2digits:
 	mov     rcx, 10
 	xor     rdx, rdx

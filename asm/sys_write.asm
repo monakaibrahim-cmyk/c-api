@@ -1,10 +1,10 @@
-global sys_write
+global sys_write								; declare global symbol
 
-section .text
+section .text									; code section
 
 sys_write:
-	mov     rax, 1
-	syscall
+	mov     rax, 1								; set syscall number to 1 (sys_write on Linux x86-64)
+	syscall 									; invoke kernel syscall
 
 .done:
-	ret
+	ret     									; return to caller (no explicit handling of return value here)
