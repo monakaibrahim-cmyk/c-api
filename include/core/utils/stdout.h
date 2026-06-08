@@ -1,22 +1,46 @@
 #pragma once
 
-#define va_start(v, l) __builtin_va_start(v, l) // initialize variadic argument list
-#define va_arg(v, t) __builtin_va_arg(v, t)		// retrieve next argument of type t
-#define va_end(v) __builtin_va_end(v)			// clean up variadic argument list
-#define va_copy(d, s) __builtin_va_copy(d, s)	// copy variadic argument list
+/**
+ * @file stdout.h
+ * @brief Standard output and formatting utilities.
+ */
 
-typedef __builtin_va_list va_list; // compiler builtin type for variadic args
+/** @brief Initialize variadic argument list */
+#define va_start(v, l) __builtin_va_start(v, l)
+/** @brief Retrieve next argument of type t */
+#define va_arg(v, t) __builtin_va_arg(v, t)
+/** @brief Clean up variadic argument list */
+#define va_end(v) __builtin_va_end(v)
+/** @brief Copy variadic argument list */
+#define va_copy(d, s) __builtin_va_copy(d, s)
 
+/** @brief Compiler builtin type for variadic args */
+typedef __builtin_va_list va_list;
+
+/**
+ * @brief External system call wrapper for writing to file descriptor.
+ * @param descriptor File descriptor (e.g., STDOUT).
+ * @param buffer Buffer to write.
+ * @param size Number of bytes to write.
+ * @return Number of bytes written.
+ */
 [[nodiscard]] extern unsigned long sys_write(int descriptor, const char *buffer, unsigned long size);
-// external system call wrapper for writing to file descriptor
 
+/**
+ * @brief Formatting context structure.
+ */
 typedef struct
 {
-	char *buffer;				// output buffer (NULL means write to stdout)
-	unsigned long long size;	// maximum buffer size
-	unsigned long long written; // number of characters written so far
+	char *buffer;				/**< Output buffer (NULL means write to stdout) */
+	unsigned long long size;	/**< Maximum buffer size */
+	unsigned long long written; /**< Number of characters written so far */
 } Context;
 
+/**
+ * @brief Writes a single character to the context.
+ * @param ctx Formatting context.
+ * @param character Character to write.
+ */
 static inline void write_char(Context *ctx, char character)
 {
 	if (ctx->buffer) // if writing to buffer instead of stdout
@@ -38,6 +62,11 @@ static inline void write_char(Context *ctx, char character)
 	}
 }
 
+/**
+ * @brief Writes an integer to the context.
+ * @param ctx Formatting context.
+ * @param integer Integer to write.
+ */
 static inline void write_int(Context *ctx, int integer)
 {
 	char buffer[16]; // temporary buffer for digits
@@ -74,6 +103,11 @@ static inline void write_int(Context *ctx, int integer)
 	}
 }
 
+/**
+ * @brief Writes a floating-point number to the context.
+ * @param ctx Formatting context.
+ * @param number Float to write.
+ */
 static inline void write_float(Context *ctx, float number)
 {
 	if (number < 0)
@@ -101,6 +135,11 @@ static inline void write_float(Context *ctx, float number)
 	}
 }
 
+/**
+ * @brief Writes a string to the context.
+ * @param ctx Formatting context.
+ * @param string String to write.
+ */
 static inline void write_string(Context *ctx, const char *string)
 {
 	if (!string)
@@ -114,6 +153,13 @@ static inline void write_string(Context *ctx, const char *string)
 	}
 }
 
+/**
+ * @brief Core formatting function.
+ * @param ctx Formatting context.
+ * @param format Format string.
+ * @param args Variadic arguments list.
+ * @return Total written characters.
+ */
 [[nodiscard]] static inline int __vformat(Context *ctx, const char *format, va_list args)
 {
 	for (int i = 0; format[i] != '\0'; i++)
@@ -149,6 +195,12 @@ static inline void write_string(Context *ctx, const char *string)
 	return (int)ctx->written; // return total written characters
 }
 
+/**
+ * @brief Variadic printf implementation.
+ * @param format Format string.
+ * @param ... Arguments.
+ * @return Number of characters written.
+ */
 [[nodiscard]] static inline int __vprintf(const char *format, ...)
 {
 	va_list args;
@@ -167,6 +219,14 @@ static inline void write_string(Context *ctx, const char *string)
 	return written; // return number of characters written
 }
 
+/**
+ * @brief Variadic snprintf implementation.
+ * @param buffer Output buffer.
+ * @param size Buffer size limit.
+ * @param format Format string.
+ * @param ... Arguments.
+ * @return Number of characters that would be written.
+ */
 [[nodiscard]] static inline int __vsnprintf(char *buffer, unsigned long long size, const char *format, ...)
 {
 	if (size == 0)
@@ -202,5 +262,18 @@ static inline void write_string(Context *ctx, const char *string)
 	return written; // return number of characters that would be written
 }
 
-#define printf(format, ...) __vprintf(format, ##__VA_ARGS__)								 // printf macro wrapper
-#define snprintf(buffer, size, format, ...) __vsnprintf(buffer, size, format, ##__VA_ARGS__) // snprintf macro wrapper
+/**
+ * @brief printf macro wrapper.
+ * @param format Format string.
+ * @param ... Arguments.
+ */
+#define printf(format, ...) __vprintf(format, ##__VA_ARGS__)
+
+/**
+ * @brief snprintf macro wrapper.
+ * @param buffer Output buffer.
+ * @param size Buffer size.
+ * @param format Format string.
+ * @param ... Arguments.
+ */
+#define snprintf(buffer, size, format, ...) __vsnprintf(buffer, size, format, ##__VA_ARGS__)
